@@ -35,7 +35,7 @@
 <h1>🖼️ Fetch Hero Images for Directify</h1>
 <p class="sub">Automatically finds the correct landscape hero image for each company using their website's Open Graph image.</p>
 
-<div class="tip">⚠️ <strong>If images didn't load last time:</strong> The tool now waits longer between requests to avoid rate limits. For any that still show ✗, paste the image URL manually in the box that appears — see instructions below the table.</div>
+<div class="tip">🔄 <strong>Improved version:</strong> Now fetches images directly from each company's website through 3 different proxy services — much more reliable than before. Takes about 2 minutes to run all 20.</div>
 <button id="startBtn" onclick="start()">▶ Fetch All 20 Hero Images</button>
 <div id="progress"></div>
 
@@ -160,44 +160,75 @@ function buildTable() {
   });
 }
 
+function extractOgFromHtml(html, baseUrl) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const selectors = [
+    'meta[property="og:image"]',
+    'meta[name="og:image"]',
+    'meta[property="twitter:image"]',
+    'meta[name="twitter:image"]',
+    'meta[property="og:image:secure_url"]',
+  ];
+  for (const sel of selectors) {
+    const el = doc.querySelector(sel);
+    const val = el?.getAttribute("content")?.trim();
+    if (val && val.length > 10) {
+      // Make relative URLs absolute
+      if (val.startsWith("//")) return "https:" + val;
+      if (val.startsWith("/")) return new URL(val, baseUrl).href;
+      return val;
+    }
+  }
+  return null;
+}
+
 async function fetchOG(company) {
   const key = company.name.replace(/[^a-zA-Z0-9]/g, "_");
   document.getElementById("status-" + key).textContent = "Fetching…";
   document.getElementById("status-" + key).className = "status waiting";
 
-  // Try Microlink API with extended fields
-  const apis = [
-    `https://api.microlink.io/?url=${encodeURIComponent(company.url)}&meta=true`,
-    `https://api.microlink.io/?url=${encodeURIComponent(company.url)}&screenshot=true`,
+  const proxies = [
+    url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   ];
 
-  for (const api of apis) {
+  // Try each CORS proxy to fetch the page HTML and extract og:image
+  for (const proxy of proxies) {
     try {
-      const res = await fetch(api);
-      const data = await res.json();
-      const img =
-        data?.data?.image?.url ||
-        data?.data?.og?.image ||
-        data?.data?.twitter?.image ||
-        data?.data?.screenshot?.url;
-
+      const res = await fetch(proxy(company.url), { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const img = extractOgFromHtml(html, company.url);
+      if (img && img.startsWith("http") && !img.includes("logo") && img.length > 20) {
+        setResult(company.name, img);
+        return true;
+      }
+      // Accept logo URLs too if nothing else
       if (img && img.startsWith("http")) {
         setResult(company.name, img);
         return true;
       }
     } catch (e) {}
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 500));
   }
 
-  // Mark as not found — show manual input
-  document.getElementById("status-" + key).textContent = "✗ Paste manually";
+  // Final fallback: Microlink API
+  try {
+    const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(company.url)}&meta=true`);
+    const data = await res.json();
+    const img = data?.data?.image?.url || data?.data?.screenshot?.url;
+    if (img && img.startsWith("http")) {
+      setResult(company.name, img);
+      return true;
+    }
+  } catch (e) {}
+
+  // All failed
+  document.getElementById("status-" + key).textContent = "✗ Not found";
   document.getElementById("status-" + key).className = "status err";
-  document.getElementById("imgurl-" + key).innerHTML = `
-    <div class="manual-input">
-      <input type="text" id="manual-${key}" placeholder="Paste image URL here…">
-      <button onclick="applyManual('${company.name}')">Apply</button>
-    </div>`;
-  document.getElementById("manualTip").style.display = "block";
+  document.getElementById("imgurl-" + key).textContent = "—";
   return false;
 }
 
@@ -220,12 +251,14 @@ async function start() {
   for (let i = 0; i < companies.length; i++) {
     prog.textContent = `Fetching ${i + 1} of ${companies.length}: ${companies[i].name}… (please wait)`;
     await fetchOG(companies[i]);
-    await new Promise(r => setTimeout(r, 1500)); // 1.5s between requests to respect rate limit
+    await new Promise(r => setTimeout(r, 800));
   }
 
   const found = Object.keys(results).length;
-  prog.textContent = `Done! ${found} of ${companies.length} hero images found. ${found < companies.length ? "Paste URLs manually for the rest, then download." : ""}`;
+  prog.textContent = `Done! ${found} of ${companies.length} hero images found.`;
   document.getElementById("downloadBtn").style.display = "inline-block";
+  document.getElementById("startBtn").disabled = false;
+  document.getElementById("startBtn").textContent = "↺ Retry Failed";
 }
 
 function downloadCSV() {
