@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fetch Hero Images for Directify</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+  h1 { color: #333; }
+  p.sub { color: #666; margin-top: -10px; }
+  button#startBtn { background: #4f46e5; color: white; border: none; padding: 12px 28px; font-size: 16px; border-radius: 8px; cursor: pointer; margin: 20px 0; }
+  button#startBtn:hover { background: #4338ca; }
+  button#startBtn:disabled { background: #9ca3af; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  th { background: #4f46e5; color: white; padding: 10px 14px; text-align: left; font-size: 14px; }
+  td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .status { font-weight: bold; }
+  .ok { color: #16a34a; }
+  .err { color: #dc2626; }
+  .pending { color: #9ca3af; }
+  .waiting { color: #d97706; }
+  img.thumb { width: 80px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
+  .img-url { max-width: 300px; word-break: break-all; font-size: 11px; color: #555; }
+  #downloadBtn { display: none; background: #16a34a; color: white; border: none; padding: 12px 28px; font-size: 16px; border-radius: 8px; cursor: pointer; margin: 20px 0; }
+  #downloadBtn:hover { background: #15803d; }
+  #progress { color: #4f46e5; font-weight: bold; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>🖼️ Fetch Hero Images for Directify</h1>
+<p class="sub">Automatically finds the correct landscape hero image for each company using their website's Open Graph image.</p>
+
+<button id="startBtn" onclick="start()">▶ Fetch All 20 Hero Images</button>
+<div id="progress"></div>
+
+<table>
+  <thead>
+    <tr><th>Company</th><th>Status</th><th>Preview</th><th>Image URL Found</th></tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<br>
+<button id="downloadBtn" onclick="downloadCSV()">⬇ Download companies_final.csv</button>
+
+<script>
+const companies = [
+  { name: "Abel & Cole",        url: "https://www.abelandcole.co.uk/" },
+  { name: "Candy Kittens",      url: "https://candykittens.co.uk/" },
+  { name: "Cheesegeek",         url: "https://www.thecheesegeek.com/" },
+  { name: "Cleo AI",            url: "https://web.meetcleo.com/" },
+  { name: "Cocoa Runners",      url: "https://cocoarunners.com/" },
+  { name: "COOK",               url: "https://www.cookfood.net/" },
+  { name: "FairyLoot",          url: "https://fairyloot.com/" },
+  { name: "Aduna",              url: "https://aduna.com/" },
+  { name: "Beauty Pie",         url: "https://www.beautypie.com/" },
+  { name: "BetterYou",          url: "https://betteryou.com/" },
+  { name: "Bird & Blend Tea Co.", url: "https://www.birdandblendtea.com/" },
+  { name: "ByRuby",             url: "https://byruby.co.uk/" },
+  { name: "Dame",               url: "https://wearedame.co/" },
+  { name: "Days Brewing",       url: "https://daysbrewing.com/" },
+  { name: "Dr Vegan",           url: "https://www.drvegan.com/" },
+  { name: "DukesHill",          url: "https://www.dukeshill.co.uk/" },
+  { name: "Exhale Coffee",      url: "https://exhalecoffee.com/" },
+  { name: "Feel",               url: "https://wearefeel.com/" },
+  { name: "Forage Botanicals",  url: "https://foragebotanicals.co.uk/" },
+  { name: "Forthglade",         url: "https://forthglade.com/" },
+];
+
+// Full CSV rows from companies_optimized.csv — image_url will be replaced for these 20
+const csvData = `name,url,logo_url,image_url,description,tags,founded_year,category,type,country,is_active
+Abel & Cole,https://www.abelandcole.co.uk/,https://img.logo.dev/abelandcole.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Organic box delivery pioneer providing weekly seasonal produce and grocery subscriptions directly from UK farms since 1988.,"D2C Subscription, Food & Drink Subscription",1988,Food & Drink Subscription,D2C Subscription,United Kingdom,1
+Absolute Collagen,https://www.absolutecollagen.com/,https://img.logo.dev/absolutecollagen.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://media.absolutecollagen.com/images/t0xvsq5n/production/da9b807464c60489277d1f3637b11aaa4675af85-1200x628.webp?fit=min&auto=format&dpr=2,Marine collagen subscription in convenient daily sachets formulated for skin elasticity and hair and nail health.,"D2C Subscription, Beauty & Personal Care",2017,Beauty & Personal Care,D2C Subscription,United Kingdom,1
+Aduna,https://aduna.com/,https://img.logo.dev/aduna.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,African superfood powders and supplements with a social enterprise mission to create demand for sustainable African ingredients.,"D2C Subscription, Health & Wellness",2012,Health & Wellness,D2C Subscription,United Kingdom,1
+AllPlants,https://allplants.com/,https://img.logo.dev/allplants.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://allplants.com/cdn/shop/files/Untitled_design_52.png?v=1779378174&width=800,Plant-based frozen meal subscription delivering chef-prepared and nutritionally complete vegan dishes across the UK.,"D2C Subscription, Food & Drink Subscription",2016,Food & Drink Subscription,D2C Subscription,United Kingdom,1
+Ancient & Brave,https://ancientandbrave.com/,https://img.logo.dev/ancientandbrave.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://ancientandbrave.com/cdn/shop/files/Ancient___Brave_Pool_House_478_98133c55-a628-4df8-9f05-0dfe3c633f8a.webp?v=1770808455&width=800,Premium collagen adaptogens and nootropic supplements for performance longevity and daily wellbeing rituals.,"D2C Subscription, Health & Wellness",2018,Health & Wellness,D2C Subscription,United Kingdom,1
+Bare Biology,https://www.barebiology.com/,https://img.logo.dev/barebiology.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://www.barebiology.com/cdn/shop/files/Bare_Biology_product_range_on_kitchen_shelf_landscape.jpg?v=1692602569&width=800,Ultra-pure high-strength omega-3 fish oil supplements sustainably sourced from wild fish with independently tested purity.,"D2C Subscription, Health & Wellness",2012,Health & Wellness,D2C Subscription,United Kingdom,1
+Beauty Pie,https://www.beautypie.com/,https://img.logo.dev/beautypie.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Membership beauty brand offering luxury-quality skincare and cosmetics at factory prices direct to subscribers.,"D2C Subscription, Beauty & Personal Care",2016,Beauty & Personal Care,D2C Subscription,United Kingdom,1
+Beer52,https://www.beer52.com/,https://img.logo.dev/beer52.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://dth50iqs19w2y.cloudfront.net/fe/338fdfe2ef41b9bf7649278c2bb4aa/Beers-of-the-World.png,Monthly craft beer subscription delivering a curated selection of global and UK independent brewery beers to your door.,"D2C Subscription, Wine & Spirits",2013,Wine & Spirits,D2C Subscription,United Kingdom,1
+Bella & Duke,https://www.bellaandduke.com/,https://img.logo.dev/bellaandduke.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://www.bellaandduke.com/wp-content/uploads/2024/11/Hero.webp,Raw pet food subscription delivering complete and nutritionally balanced raw meals for dogs and cats across the UK.,"D2C Subscription, Pet Food & Care",2016,Pet Food & Care,D2C Subscription,United Kingdom,1
+BetterYou,https://betteryou.com/,https://img.logo.dev/betteryou.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Pioneering transdermal magnesium and vitamin sprays for superior absorption backed by independent clinical research.,"D2C Subscription, Health & Wellness",2006,Health & Wellness,D2C Subscription,United Kingdom,1
+Bike Club,https://bikeclub.com/,https://img.logo.dev/bikeclub.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://cdn.shopify.com/s/files/1/0096/3503/7247/files/BC_HorizontalLockupv2_PurpleOrange.png?v=1632994015&width=800,Children's bicycle subscription allowing kids to upgrade to a larger bike as they grow while avoiding single-purchase waste.,"D2C Subscription, Baby & Kids",2018,Baby & Kids,D2C Subscription,United Kingdom,1
+Bird & Blend Tea Co.,https://www.birdandblendtea.com/,https://img.logo.dev/birdandblendtea.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Independent tea brand blending innovative loose leaf teas and herbals available in-store online and on subscription.,"D2C Subscription, Coffee & Tea",2013,Coffee & Tea,D2C Subscription,United Kingdom,1
+Biscuiteers,https://www.biscuiteers.com/,https://img.logo.dev/biscuiteers.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://www.biscuiteers.com/cdn/shop/files/Biscuiteers_Cafe_44bcd632-e2b2-4046-ba9f-a0fc24fe5075.jpg?v=1759348183&width=800,Hand-iced luxury biscuit subscription and gifting brand known for beautiful and intricate designs for every occasion.,"D2C Subscription, Food & Snacks",2007,Food & Snacks,D2C Subscription,United Kingdom,1
+Bloom & Wild,https://www.bloomandwild.com/,https://img.logo.dev/bloomandwild.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://images.ctfassets.net/ucgi79tscdcj/3Xy7suoMqKfziU0cCLmhPS/904b998fe02afcb918e97680faa2ab64/share.jpg?fit=fill&w=1200&h=630,The UK's most-loved letterbox flower subscription delivering fresh seasonal bouquets and gifts curated by hand.,"D2C Subscription, Flower & Gift Delivery",2013,Flower & Gift Delivery,D2C Subscription,United Kingdom,1
+BOL Foods,https://bolfoods.com/,https://img.logo.dev/bolfoods.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://bolfoods.com/cdn/shop/files/bolfoods.com_1200x1200.jpg?v=1699373055&width=800,Plant-based ready meals and salads on subscription designed to make healthy and protein-rich eating simple and delicious.,"D2C Subscription, Food & Drink Subscription",2015,Food & Drink Subscription,D2C Subscription,United Kingdom,1
+Bold Bean Co,https://boldbeanco.com/,https://img.logo.dev/boldbeanco.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://boldbeanco.com/cdn/shop/files/0909215_Bold_Bean_128_e9a9db83-2bb3-48cb-91ee-d4a10f8c06cd_1200x1200.jpg?v=1759230154&width=800,Premium jarred beans subscription revolutionising how people cook and eat with sustainably sourced legumes.,"D2C Subscription, Food & Snacks",2020,Food & Snacks,D2C Subscription,United Kingdom,1
+Bookishly,https://www.bookishly.co.uk/,https://img.logo.dev/bookishly.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://www.bookishly.co.uk/cdn/shop/files/tina_COM_photo_vanity_Fair_copy_smaller.jpg?v=1759748227&width=800,Literary-inspired subscription delivering beautifully designed book accessories prints and bookish lifestyle products monthly.,"D2C Subscription, Books & Entertainment",2016,Books & Entertainment,D2C Subscription,United Kingdom,1
+Bower Collective,https://bowercollective.com/,https://img.logo.dev/bowercollective.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://bowercollective.com/cdn/shop/files/Bower-Collective_May_2025_2.1_4x5_b38b5c5e-5750-45b1-9183-39d0fa60a0b4.jpg?v=1756123062&width=800,Plastic-free home and personal care product subscription offering sustainably packaged alternatives to mainstream brands.,"D2C Subscription, Eco & Sustainable Products",2019,Eco & Sustainable Products,D2C Subscription,United Kingdom,1
+Bulk,https://www.bulk.com/uk,https://img.logo.dev/bulk.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://www.bulk.com/uk/media_1d1f2f3cccac55fd1d7ce7a0112b0a8e85463f222.jpg?width=1200&format=pjpg&optimize=medium,Sports nutrition and supplement brand offering transparent and affordable quality products for fitness-focused individuals.,"D2C Subscription, Health & Wellness",2006,Health & Wellness,D2C Subscription,United Kingdom,1
+Butternut Box,https://butternutbox.com/,https://img.logo.dev/butternutbox.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://a.storyblok.com/f/339951/1200x630/18d721bbbe/butternut-box-open-graph-image.png/m/1200x630/smart,Freshly prepared human-grade dog food subscription delivered in personalised portions tailored to each dog's health needs.,"D2C Subscription, Pet Food & Care",2016,Pet Food & Care,D2C Subscription,United Kingdom,1
+ByRuby,https://byruby.co.uk/,https://img.logo.dev/byruby.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Artisan frozen meal subscription delivering hand-crafted restaurant-quality dishes in compostable packaging to your door.,"D2C Subscription, Food & Drink Subscription",2019,Food & Drink Subscription,D2C Subscription,United Kingdom,1
+Candy Kittens,https://candykittens.co.uk/,https://img.logo.dev/candykittens.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Premium vegan gourmet sweets on subscription made with real fruit flavours and no artificial colours or flavours.,"D2C Subscription, Food & Snacks",2012,Food & Snacks,D2C Subscription,United Kingdom,1
+Cheesegeek,https://www.thecheesegeek.com/,https://img.logo.dev/thecheesegeek.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Artisan cheese subscription delivering expertly curated seasonal cheeses with detailed tasting notes delivered monthly.,"D2C Subscription, Food & Snacks",2016,Food & Snacks,D2C Subscription,United Kingdom,1
+Chip,https://www.getchip.uk/,https://img.logo.dev/getchip.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://cdn.prod.website-files.com/5d65390243727621f8413d93/65c10e0b6e1bf2233559b4eb_Home%20-%20Open%20Graph.jpg,AI-powered savings and investment app that automatically saves money based on spending patterns with premium subscription tiers.,"D2C Subscription, Finance & Fintech",2017,Finance & Fintech,D2C Subscription,United Kingdom,1
+Cleo AI,https://web.meetcleo.com/,https://img.logo.dev/meetcleo.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,AI financial assistant app with premium subscription offering budgeting tools cash advances and personalised financial coaching.,"D2C Subscription, Finance & Fintech",2016,Finance & Fintech,D2C Subscription,United Kingdom,1
+Cleanco,https://clean.co/,https://img.logo.dev/clean.co?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://clean.co/cdn/shop/files/3_8cad25b0-456b-4f3d-a538-46189b7fc76c.png?v=1699374121&width=800,Premium alcohol-free spirits subscription replicating gin rum tequila and spiced rum without the alcohol.,"D2C Subscription, Alcohol-Free & Craft Drinks",2019,Alcohol-Free & Craft Drinks,D2C Subscription,United Kingdom,1
+Cocoa Runners,https://cocoarunners.com/,https://img.logo.dev/cocoarunners.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Craft chocolate subscription and discovery club connecting chocolate lovers with the world's finest bean-to-bar makers.,"D2C Subscription, Food & Snacks",2013,Food & Snacks,D2C Subscription,United Kingdom,1
+COOK,https://www.cookfood.net/,https://img.logo.dev/cookfood.net?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Premium frozen meal brand delivering homemade-quality ready meals on subscription through its nationwide store network.,"D2C Subscription, Food & Drink Subscription",1997,Food & Drink Subscription,D2C Subscription,United Kingdom,1
+Craft Gin Club,https://www.craftginclub.co.uk/,https://img.logo.dev/craftginclub.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://www.thecuriousdrinker.com/cdn/shop/files/Desktop_Hero.png?v=1779692135&width=800,Monthly gin discovery subscription delivering exclusive small-batch gins with cocktail mixers and tasting guides.,"D2C Subscription, Wine & Spirits",2015,Wine & Spirits,D2C Subscription,United Kingdom,1
+Curve,https://www.curve.com/,https://img.logo.dev/curve.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://cdn.buttercms.com/OZb0mcqMQz6dq1j13OYV,Smart wallet subscription consolidating multiple bank cards into one with cashback travel perks and spend controls.,"D2C Subscription, Finance & Fintech",2016,Finance & Fintech,D2C Subscription,United Kingdom,1
+Dame,https://wearedame.co/,https://img.logo.dev/wearedame.co?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Sustainable period care brand making reusable and organic disposable products to end single-use period waste.,"D2C Subscription, Beauty & Personal Care",2018,Beauty & Personal Care,D2C Subscription,United Kingdom,1
+Dash Water,https://dash-water.com/,https://img.logo.dev/dash-water.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://dash-water.com/cdn/shop/files/Apple_Homepage_Desktop_580f683f-27ec-4cfc-ade8-322df3d199cc.png?v=1778087757&width=800,Sparkling water infused with wonky fruit on subscription providing a sustainable zero-sugar alternative to soft drinks.,"D2C Subscription, Alcohol-Free & Craft Drinks",2017,Alcohol-Free & Craft Drinks,D2C Subscription,United Kingdom,1
+Daye,https://www.yourdaye.com/,https://img.logo.dev/yourdaye.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://images.prismic.io/ecommerce-website/aIiPaFGsbswqTYzf_ShareImage%E2%80%94Homepage_general.jpg?auto=compress%2Cformat&rect=0%2C0%2C1200%2C630&w=1200&h=630&fit=max&q=75,CBD-infused organic tampons and femtech products designed to address period pain and gynaecological health.,"D2C Subscription, Health & Wellness",2018,Health & Wellness,D2C Subscription,United Kingdom,1
+Days Brewing,https://daysbrewing.com/,https://img.logo.dev/daysbrewing.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Zero-alcohol beer brand producing great-tasting lagers and IPAs for health-conscious and mindful drinkers on subscription.,"D2C Subscription, Alcohol-Free & Craft Drinks",2020,Alcohol-Free & Craft Drinks,D2C Subscription,United Kingdom,1
+Dermatica,https://www.dermatica.co.uk/,https://img.logo.dev/dermatica.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://dermatica.co.uk/images/dermatica-rebrand-2022/meta/social-share-image.png,Online prescription skincare clinic delivering personalised retinoid treatments for acne pigmentation and ageing on subscription.,"D2C Subscription, Beauty & Personal Care",2019,Beauty & Personal Care,D2C Subscription,United Kingdom,1
+Different Dog,https://www.differentdog.com/,https://img.logo.dev/differentdog.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://www.differentdog.com/api/media/file/Sustainable%20packaging%20-%20Our%20impact-1200x630.jpg,Gently cooked and vet-approved fresh dog food personalised to your dog's specific breed weight and health needs.,"D2C Subscription, Pet Food & Care",2017,Pet Food & Care,D2C Subscription,United Kingdom,1
+Dirtea,https://www.dirteaworld.com/,https://img.logo.dev/dirteaworld.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://www.dirteaworld.com/cdn/shop/files/STARTER_KIT_NEW_ITEMS_97f85bac-be21-4c97-8117-b927ec139d55.jpg?v=1754385759&width=800,Premium functional mushroom tea and coffee subscription harnessing adaptogenic mushrooms for daily health and wellbeing benefits.,"D2C Subscription, Coffee & Tea",2021,Coffee & Tea,D2C Subscription,United Kingdom,1
+Dr Vegan,https://www.drvegan.com/,https://img.logo.dev/drvegan.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Personalised plant-based vitamins and supplements delivered monthly and formulated to individual nutritional needs and health goals.,"D2C Subscription, Health & Wellness",2019,Health & Wellness,D2C Subscription,United Kingdom,1
+DukesHill,https://www.dukeshill.co.uk/,https://img.logo.dev/dukeshill.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Royal Warrant-holding artisan food subscription delivering premium British charcuterie cheese and seasonal hampers.,"D2C Subscription, Food & Drink Subscription",2002,Food & Drink Subscription,D2C Subscription,United Kingdom,1
+Emma App,https://emma-app.com/,https://img.logo.dev/emma-app.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://cdn.prod.website-files.com/5dc96d533f57326b74c5225b/67616a4786cf10ab7f6814f5_OGP.png,Personal finance app helping subscribers track spending manage bills and grow savings through open banking data.,"D2C Subscription, Finance & Fintech",2018,Finance & Fintech,D2C Subscription,United Kingdom,1
+Exhale Coffee,https://exhalecoffee.com/,https://img.logo.dev/exhalecoffee.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Health-focused mushroom and adaptogen coffee subscription with lower caffeine and added functional wellness benefits.,"D2C Subscription, Coffee & Tea",2020,Coffee & Tea,D2C Subscription,United Kingdom,1
+FairyLoot,https://fairyloot.com/,https://img.logo.dev/fairyloot.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Premium fantasy book box subscription with exclusive editions author-signed copies and themed bookish merchandise.,"D2C Subscription, Books & Entertainment",2015,Books & Entertainment,D2C Subscription,United Kingdom,1
+Feel,https://wearefeel.com/,https://img.logo.dev/wearefeel.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Personalised daily vitamin subscription formulated by scientists to address individual nutritional gaps and health goals.,"D2C Subscription, Health & Wellness",2019,Health & Wellness,D2C Subscription,United Kingdom,1
+Field Doctor,https://www.fielddoctor.co.uk/,https://img.logo.dev/fielddoctor.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://cdn.shopify.com/s/files/1/0271/2662/8450/files/fd_meta_preview.webp?v=1745830130&width=800,Dietitian-designed and NHS-approved frozen meals clinically proven to support specific health conditions through food as medicine.,"D2C Subscription, Health & Wellness",2019,Health & Wellness,D2C Subscription,United Kingdom,1
+Fiit,https://fiit.tv/,https://img.logo.dev/fiit.tv?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://images-bucket.prod.fiit-static.net/247854d5-5e2a-4c9a-b816-0be8973c9adc.jpeg,Interactive home fitness subscription with live and on-demand classes tracked by wearable devices in real time.,"D2C Subscription, Fitness & Wellness Apps",2017,Fitness & Wellness Apps,D2C Subscription,United Kingdom,1
+Flowerbx,https://www.flowerbx.com/,https://img.logo.dev/flowerbx.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://www.flowerbx.com/media/wysiwyg/Rectangle_662_1.jpg,Luxury single-variety flower subscription sourcing premium blooms directly from growers for same-day and next-day delivery.,"D2C Subscription, Flower & Gift Delivery",2016,Flower & Gift Delivery,D2C Subscription,United Kingdom,1
+Forage Botanicals,https://foragebotanicals.co.uk/,https://img.logo.dev/foragebotanicals.co.uk?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Herbalist-formulated tinctures and supplements for women's health using wild-crafted and organic botanical ingredients.,"D2C Subscription, Health & Wellness",2018,Health & Wellness,D2C Subscription,United Kingdom,1
+Form Nutrition,https://formnutrition.com/,https://img.logo.dev/formnutrition.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,https://formnutrition.com/wp-content/uploads/2020/08/fm_home_intro_02.jpg,Plant-based performance nutrition with evidence-backed protein powders and supplements designed for active lifestyles.,"D2C Subscription, Health & Wellness",2017,Health & Wellness,D2C Subscription,United Kingdom,1
+Forthglade,https://forthglade.com/,https://img.logo.dev/forthglade.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,REPLACE,Devon-based natural wet and dry pet food brand using whole and responsibly sourced British ingredients on subscription.,"D2C Subscription, Pet Food & Care",1971,Pet Food & Care,D2C Subscription,United Kingdom,1
+Free Soul,https://freesoul.com/,https://img.logo.dev/freesoul.com?token=pk_TcapZLpnR4CkW-ZBdN1Hlg&size=128,http://freesoul.com/cdn/shop/files/Sharing_Image-min.jpg?v=1761127435&width=800,Women's wellness supplements and protein blends specifically formulated to support female hormones energy and overall health.,"D2C Subscription, Health & Wellness",2018,Health & Wellness,D2C Subscription,United Kingdom,1`;
+
+const results = {};
+
+function buildTable() {
+  const tbody = document.getElementById("tableBody");
+  companies.forEach(c => {
+    const tr = document.createElement("tr");
+    tr.id = "row-" + c.name.replace(/\s+/g, "_");
+    tr.innerHTML = `
+      <td><strong>${c.name}</strong></td>
+      <td class="status pending" id="status-${c.name.replace(/\s+/g, "_")}">Waiting…</td>
+      <td id="thumb-${c.name.replace(/\s+/g, "_")}">—</td>
+      <td class="img-url" id="imgurl-${c.name.replace(/\s+/g, "_")}">—</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function fetchOG(company) {
+  const key = company.name.replace(/\s+/g, "_");
+  document.getElementById("status-" + key).textContent = "Fetching…";
+  document.getElementById("status-" + key).className = "status waiting";
+
+  try {
+    const api = `https://api.microlink.io/?url=${encodeURIComponent(company.url)}&meta=true`;
+    const res = await fetch(api);
+    const data = await res.json();
+    const img = data?.data?.image?.url || data?.data?.screenshot?.url;
+
+    if (img) {
+      results[company.name] = img;
+      document.getElementById("status-" + key).textContent = "✓ Found";
+      document.getElementById("status-" + key).className = "status ok";
+      document.getElementById("thumb-" + key).innerHTML =
+        `<img class="thumb" src="${img}" onerror="this.style.display='none'">`;
+      document.getElementById("imgurl-" + key).textContent = img;
+    } else {
+      document.getElementById("status-" + key).textContent = "✗ Not found";
+      document.getElementById("status-" + key).className = "status err";
+      document.getElementById("imgurl-" + key).textContent = "—";
+    }
+  } catch (e) {
+    document.getElementById("status-" + key).textContent = "✗ Error";
+    document.getElementById("status-" + key).className = "status err";
+  }
+}
+
+async function start() {
+  document.getElementById("startBtn").disabled = true;
+  document.getElementById("downloadBtn").style.display = "none";
+  const prog = document.getElementById("progress");
+
+  for (let i = 0; i < companies.length; i++) {
+    prog.textContent = `Fetching ${i + 1} of ${companies.length}: ${companies[i].name}…`;
+    await fetchOG(companies[i]);
+    await new Promise(r => setTimeout(r, 600));
+  }
+
+  prog.textContent = `Done! ${Object.keys(results).length} of ${companies.length} hero images found.`;
+  document.getElementById("downloadBtn").style.display = "inline-block";
+}
+
+function downloadCSV() {
+  let csv = csvData;
+  for (const [name, imageUrl] of Object.entries(results)) {
+    // Escape name for use in regex (handle & etc.)
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`^(${escapedName},[^\\n]+?),REPLACE,`, 'm');
+    csv = csv.replace(re, `$1,${imageUrl},`);
+  }
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "companies_final.csv";
+  a.click();
+}
+
+buildTable();
+</script>
+</body>
+</html>
