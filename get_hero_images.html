@@ -20,10 +20,14 @@
   .pending { color: #9ca3af; }
   .waiting { color: #d97706; }
   img.thumb { width: 80px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
-  .img-url { max-width: 300px; word-break: break-all; font-size: 11px; color: #555; }
+  .img-url { max-width: 260px; word-break: break-all; font-size: 11px; color: #555; }
   #downloadBtn { display: none; background: #16a34a; color: white; border: none; padding: 12px 28px; font-size: 16px; border-radius: 8px; cursor: pointer; margin: 20px 0; }
   #downloadBtn:hover { background: #15803d; }
   #progress { color: #4f46e5; font-weight: bold; margin: 10px 0; }
+  .manual-input { display: flex; gap: 6px; margin-top: 4px; }
+  .manual-input input { flex: 1; font-size: 11px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
+  .manual-input button { font-size: 11px; padding: 4px 8px; background: #4f46e5; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  .tip { background: #fef9c3; border: 1px solid #fde047; border-radius: 6px; padding: 10px 14px; margin: 12px 0; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -31,17 +35,25 @@
 <h1>🖼️ Fetch Hero Images for Directify</h1>
 <p class="sub">Automatically finds the correct landscape hero image for each company using their website's Open Graph image.</p>
 
+<div class="tip">⚠️ <strong>If images didn't load last time:</strong> The tool now waits longer between requests to avoid rate limits. For any that still show ✗, paste the image URL manually in the box that appears — see instructions below the table.</div>
 <button id="startBtn" onclick="start()">▶ Fetch All 20 Hero Images</button>
 <div id="progress"></div>
 
 <table>
   <thead>
-    <tr><th>Company</th><th>Status</th><th>Preview</th><th>Image URL Found</th></tr>
+    <tr><th>Company</th><th>Status</th><th>Preview</th><th>Image URL Found / Paste Manually</th></tr>
   </thead>
   <tbody id="tableBody"></tbody>
 </table>
 
 <br>
+<div class="tip" id="manualTip" style="display:none">
+  <strong>For any ✗ Not found rows:</strong><br>
+  1. Open the company website in a new tab<br>
+  2. Press <strong>F12</strong> → Console tab → paste this and press Enter:<br>
+  <code style="background:#f3f4f6;padding:2px 6px;border-radius:3px;font-size:12px">copy(document.querySelector('meta[property="og:image"]')?.content)</code><br>
+  3. The image URL is now in your clipboard — paste it into the box next to that company above.
+</div>
 <button id="downloadBtn" onclick="downloadCSV()">⬇ Download companies_final.csv</button>
 
 <script>
@@ -123,61 +135,96 @@ Free Soul,https://freesoul.com/,https://img.logo.dev/freesoul.com?token=pk_TcapZ
 
 const results = {};
 
+function setResult(name, img) {
+  const key = name.replace(/[^a-zA-Z0-9]/g, "_");
+  results[name] = img;
+  document.getElementById("status-" + key).textContent = "✓ Found";
+  document.getElementById("status-" + key).className = "status ok";
+  document.getElementById("thumb-" + key).innerHTML =
+    `<img class="thumb" src="${img}" onerror="this.style.display='none'">`;
+  document.getElementById("imgurl-" + key).innerHTML =
+    `<span style="font-size:11px;color:#555;word-break:break-all">${img}</span>`;
+}
+
 function buildTable() {
   const tbody = document.getElementById("tableBody");
   companies.forEach(c => {
+    const key = c.name.replace(/[^a-zA-Z0-9]/g, "_");
     const tr = document.createElement("tr");
-    tr.id = "row-" + c.name.replace(/\s+/g, "_");
     tr.innerHTML = `
-      <td><strong>${c.name}</strong></td>
-      <td class="status pending" id="status-${c.name.replace(/\s+/g, "_")}">Waiting…</td>
-      <td id="thumb-${c.name.replace(/\s+/g, "_")}">—</td>
-      <td class="img-url" id="imgurl-${c.name.replace(/\s+/g, "_")}">—</td>`;
+      <td><strong>${c.name}</strong><br><small style="color:#999">${c.url}</small></td>
+      <td class="status pending" id="status-${key}">Waiting…</td>
+      <td id="thumb-${key}">—</td>
+      <td id="imgurl-${key}">—</td>`;
     tbody.appendChild(tr);
   });
 }
 
 async function fetchOG(company) {
-  const key = company.name.replace(/\s+/g, "_");
+  const key = company.name.replace(/[^a-zA-Z0-9]/g, "_");
   document.getElementById("status-" + key).textContent = "Fetching…";
   document.getElementById("status-" + key).className = "status waiting";
 
-  try {
-    const api = `https://api.microlink.io/?url=${encodeURIComponent(company.url)}&meta=true`;
-    const res = await fetch(api);
-    const data = await res.json();
-    const img = data?.data?.image?.url || data?.data?.screenshot?.url;
+  // Try Microlink API with extended fields
+  const apis = [
+    `https://api.microlink.io/?url=${encodeURIComponent(company.url)}&meta=true`,
+    `https://api.microlink.io/?url=${encodeURIComponent(company.url)}&screenshot=true`,
+  ];
 
-    if (img) {
-      results[company.name] = img;
-      document.getElementById("status-" + key).textContent = "✓ Found";
-      document.getElementById("status-" + key).className = "status ok";
-      document.getElementById("thumb-" + key).innerHTML =
-        `<img class="thumb" src="${img}" onerror="this.style.display='none'">`;
-      document.getElementById("imgurl-" + key).textContent = img;
-    } else {
-      document.getElementById("status-" + key).textContent = "✗ Not found";
-      document.getElementById("status-" + key).className = "status err";
-      document.getElementById("imgurl-" + key).textContent = "—";
-    }
-  } catch (e) {
-    document.getElementById("status-" + key).textContent = "✗ Error";
-    document.getElementById("status-" + key).className = "status err";
+  for (const api of apis) {
+    try {
+      const res = await fetch(api);
+      const data = await res.json();
+      const img =
+        data?.data?.image?.url ||
+        data?.data?.og?.image ||
+        data?.data?.twitter?.image ||
+        data?.data?.screenshot?.url;
+
+      if (img && img.startsWith("http")) {
+        setResult(company.name, img);
+        return true;
+      }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  // Mark as not found — show manual input
+  document.getElementById("status-" + key).textContent = "✗ Paste manually";
+  document.getElementById("status-" + key).className = "status err";
+  document.getElementById("imgurl-" + key).innerHTML = `
+    <div class="manual-input">
+      <input type="text" id="manual-${key}" placeholder="Paste image URL here…">
+      <button onclick="applyManual('${company.name}')">Apply</button>
+    </div>`;
+  document.getElementById("manualTip").style.display = "block";
+  return false;
+}
+
+function applyManual(name) {
+  const key = name.replace(/[^a-zA-Z0-9]/g, "_");
+  const val = document.getElementById("manual-" + key)?.value?.trim();
+  if (val && val.startsWith("http")) {
+    setResult(name, val);
+  } else {
+    alert("Please paste a full image URL starting with http");
   }
 }
 
 async function start() {
   document.getElementById("startBtn").disabled = true;
   document.getElementById("downloadBtn").style.display = "none";
+  document.getElementById("manualTip").style.display = "none";
   const prog = document.getElementById("progress");
 
   for (let i = 0; i < companies.length; i++) {
-    prog.textContent = `Fetching ${i + 1} of ${companies.length}: ${companies[i].name}…`;
+    prog.textContent = `Fetching ${i + 1} of ${companies.length}: ${companies[i].name}… (please wait)`;
     await fetchOG(companies[i]);
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 1500)); // 1.5s between requests to respect rate limit
   }
 
-  prog.textContent = `Done! ${Object.keys(results).length} of ${companies.length} hero images found.`;
+  const found = Object.keys(results).length;
+  prog.textContent = `Done! ${found} of ${companies.length} hero images found. ${found < companies.length ? "Paste URLs manually for the rest, then download." : ""}`;
   document.getElementById("downloadBtn").style.display = "inline-block";
 }
 
